@@ -2,8 +2,8 @@ if (!(IsLoaded(".\Includes\include.ps1"))) {. .\Includes\include.ps1;RegisterLoa
 
 Try {
     $dtAlgos = New-Object System.Data.DataTable
-    if (Test-Path ((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\nlpoolplus\nlpoolplus.xml")) {
-        $dtAlgos.ReadXml((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\nlpoolplus\nlpoolplus.xml") | out-null
+    if (Test-Path ((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\zergpoolplus\zergpoolplus.xml")) {
+        $dtAlgos.ReadXml((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\zergpoolplus\zergpoolplus.xml") | out-null
     }
 }
 catch { return }
@@ -11,10 +11,11 @@ catch { return }
 if (-not $dtAlgos) {return}
 
 $Name = (Get-Item $script:MyInvocation.MyCommand.Path).BaseName
-$HostSuffix = "mine.nlpool.nl"
+$HostSuffix = ".mine.zergpool.com"
 $PriceField = "Plus_Price"
 # $PriceField = "actual_last24h"
 # $PriceField = "estimate_current"
+$DivisorMultiplier = 1000000
  
 $Location = "US"
 
@@ -23,40 +24,36 @@ $Location = "US"
     $PoolConf = $Config.PoolsConfig.$ConfName
 
 $dtAlgos | foreach {
-    $Pool = $_
-    $PoolHost = $HostSuffix
-    $PoolPort = $Pool.port
-    $PoolAlgorithm = Get-Algorithm $Pool.algo
+    $PoolHost = "$($_.algo)$($HostSuffix)"
+    $PoolPort = $_.port
+    $PoolAlgorithm = Get-Algorithm $_.algo
+    
+    $Divisor = $DivisorMultiplier * [Double]$_.mbtc_mh_factor
 
-      $Divisor = 1000000 * [Double]$Pool.mbtc_mh_factor
-
-    switch ($PoolAlgorithm) {
-        # "equihash125" { $Divisor *= 2 } #temp fix
-        # "equihash144" { $Divisor *= 2 } #temp fix
-        # "equihash192" { $Divisor *= 2 } #temp fix
-        "verushash"   { $Divisor *= 2 } #temp fix
-    }
-
-    $Stat = Set-Stat -Name "$($Name)_$($PoolAlgorithm)_Profit" -Value ([Double]$Pool.$PriceField / $Divisor * (1 - ($Pool.fees / 100)))
+    $Stat = Set-Stat -Name "$($Name)_$($PoolAlgorithm)_Profit" -Value ([Double]$_.$PriceField / $Divisor * (1 - ($_.fees / 100)))
 
     $PwdCurr = if ($PoolConf.PwdCurrency) {$PoolConf.PwdCurrency}else {$Config.Passwordcurrency}
     $WorkerName = If ($PoolConf.WorkerName -like "ID=*") {$PoolConf.WorkerName} else {"ID=$($PoolConf.WorkerName)"}
-
+    
+    $PoolPassword = If ( ! $Config.PartyWhenAvailable ) {"$($WorkerName),c=$($PwdCurr)"} else { "$($WorkerName),c=$($PwdCurr),m=party.NPlusMiner" }
+    $PoolPassword = If ( $_.symbol) { "$($PoolPassword),mc=$($_.symbol)" } else { $PoolPassword }
+    
     if ($PoolConf.Wallet) {
         [PSCustomObject]@{
             Algorithm     = $PoolAlgorithm
-            Info          = "Auto($($Pool.symbol))"
-            Price         = $Stat.Live*$PoolConf.PricePenaltyFactor
+            Info          = $_.symbol
+            Price         = $Stat.Live*$PoolConf.PricePenaltyFactor #*$SoloPenalty
             StablePrice   = $Stat.Week
             MarginOfError = $Stat.Week_Fluctuation
             Protocol      = "stratum+tcp"
             Host          = $PoolHost
             Port          = $PoolPort
             User          = $PoolConf.Wallet
-            Pass          = "$($WorkerName),c=$($PwdCurr)"
+            Pass          = $PoolPassword
             Location      = $Location
             SSL           = $false
-            Coin          = "Auto-($($Pool.symbol))"
+            Coin          = $_.symbol
+            SoloBlocksPenalty          = $_.SoloBlocksPenalty
         }
     }
 }

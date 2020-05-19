@@ -2,8 +2,8 @@ if (!(IsLoaded(".\Includes\include.ps1"))) {. .\Includes\include.ps1;RegisterLoa
 
 Try {
     $dtAlgos = New-Object System.Data.DataTable
-    if (Test-Path ((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\nlpoolplus\nlpoolplus.xml")) {
-        $dtAlgos.ReadXml((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\nlpoolplus\nlpoolplus.xml") | out-null
+    if (Test-Path ((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\blazepoolplus\blazepoolplus.xml")) {
+        $dtAlgos.ReadXml((split-path -parent (get-item $script:MyInvocation.MyCommand.Path).Directory) + "\BrainPlus\blazepoolplus\blazepoolplus.xml") | out-null
     }
 }
 catch { return }
@@ -11,10 +11,11 @@ catch { return }
 if (-not $dtAlgos) {return}
 
 $Name = (Get-Item $script:MyInvocation.MyCommand.Path).BaseName
-$HostSuffix = "mine.nlpool.nl"
+$HostSuffix = ".mine.blazepool.com"
 $PriceField = "Plus_Price"
 # $PriceField = "actual_last24h"
 # $PriceField = "estimate_current"
+$DivisorMultiplier = 1000000
  
 $Location = "US"
 
@@ -24,24 +25,18 @@ $Location = "US"
 
 $dtAlgos | foreach {
     $Pool = $_
-    $PoolHost = $HostSuffix
+    $PoolHost = "$($Pool.algo)$($HostSuffix)"
     $PoolPort = $Pool.port
     $PoolAlgorithm = Get-Algorithm $Pool.algo
 
-      $Divisor = 1000000 * [Double]$Pool.mbtc_mh_factor
+    $Divisor = $DivisorMultiplier * [Double]$Pool.mbtc_mh_factor
 
-    switch ($PoolAlgorithm) {
-        # "equihash125" { $Divisor *= 2 } #temp fix
-        # "equihash144" { $Divisor *= 2 } #temp fix
-        # "equihash192" { $Divisor *= 2 } #temp fix
-        "verushash"   { $Divisor *= 2 } #temp fix
-    }
-
-    $Stat = Set-Stat -Name "$($Name)_$($PoolAlgorithm)_Profit" -Value ([Double]$Pool.$PriceField / $Divisor * (1 - ($Pool.fees / 100)))
+    if ((Get-Stat -Name "$($Name)_$($PoolAlgorithm)_Profit") -eq $null) {$Stat = Set-Stat -Name "$($Name)_$($PoolAlgorithm)_Profit" -Value ([Double]$Pool.$PriceField / $Divisor * (1 - ($Pool.fees / 100)))}
+    else {$Stat = Set-Stat -Name "$($Name)_$($PoolAlgorithm)_Profit" -Value ([Double]$Pool.$PriceField / $Divisor * (1 - ($Pool.fees / 100)))}
 
     $PwdCurr = if ($PoolConf.PwdCurrency) {$PoolConf.PwdCurrency}else {$Config.Passwordcurrency}
     $WorkerName = If ($PoolConf.WorkerName -like "ID=*") {$PoolConf.WorkerName} else {"ID=$($PoolConf.WorkerName)"}
-
+    
     if ($PoolConf.Wallet) {
         [PSCustomObject]@{
             Algorithm     = $PoolAlgorithm
